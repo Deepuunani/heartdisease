@@ -102,10 +102,9 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file)
 
     st.image(
-        image,
-        caption="Uploaded ECG Image",
-        use_container_width=True
-    )
+    image,
+    caption="Uploaded ECG Image"
+)
 
     if st.button("Predict"):
 
