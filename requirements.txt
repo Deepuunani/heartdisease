@@ -8,3 +8,4 @@ pandas
 scikit-learn
 wfdb
 h5py
+reportlab==4.2.2
