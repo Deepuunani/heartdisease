@@ -2,28 +2,45 @@ import cv2
 import numpy as np
 
 
+# ---------------------------------------------------------
+# Convert ECG image into 1D signal
+# ---------------------------------------------------------
+
 def image_to_signal(image_path):
 
-    # Read image
     img = cv2.imread(image_path)
 
     if img is None:
         raise Exception("Image not found.")
 
-    # Convert to RGB
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # Convert to grayscale
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Extract red waveform
-    lower_red = np.array([150, 0, 0])
-    upper_red = np.array([255, 120, 120])
+    # Blur to remove noise
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
 
-    mask = cv2.inRange(img, lower_red, upper_red)
+    # Threshold
+    _, mask = cv2.threshold(
+        gray,
+        180,
+        255,
+        cv2.THRESH_BINARY_INV
+    )
+
+    # Remove tiny noise
+    kernel = np.ones((2, 2), np.uint8)
+
+    mask = cv2.morphologyEx(
+        mask,
+        cv2.MORPH_OPEN,
+        kernel
+    )
 
     h, w = mask.shape
 
     signal = []
 
-    # Scan every column
+    # Extract waveform column by column
     for x in range(w):
 
         ys = np.where(mask[:, x] > 0)[0]
@@ -36,24 +53,41 @@ def image_to_signal(image_path):
 
     signal = np.array(signal, dtype=np.float32)
 
-    # Invert because image y-axis is downward
+    # Invert image coordinates
     signal = h - signal
 
-    # Normalize
+    # Remove baseline
     signal = signal - np.mean(signal)
-    signal = signal / np.std(signal)
+
+    std = np.std(signal)
+
+    if std == 0:
+        std = 1
+
+    signal = signal / std
 
     return signal
-# -----------------------------------------
-# Convert waveform to 360 samples
-# -----------------------------------------
+
+
+# ---------------------------------------------------------
+# Resize signal to 360 samples
+# ---------------------------------------------------------
 
 def preprocess_image(image_path):
 
     signal = image_to_signal(image_path)
 
-    x_old = np.linspace(0, 1, len(signal))
-    x_new = np.linspace(0, 1, 360)
+    x_old = np.linspace(
+        0,
+        1,
+        len(signal)
+    )
+
+    x_new = np.linspace(
+        0,
+        1,
+        360
+    )
 
     signal = np.interp(
         x_new,
@@ -63,18 +97,23 @@ def preprocess_image(image_path):
 
     signal = signal.astype(np.float32)
 
-    signal = signal.reshape(1, 360, 1)
+    signal = signal.reshape(
+        1,
+        360,
+        1
+    )
 
     return signal
 
 
-# -----------------------------------------
-# Testing
-# -----------------------------------------
+# ---------------------------------------------------------
+# Test
+# ---------------------------------------------------------
 
 if __name__ == "__main__":
 
-    sample = preprocess_image("test_images/APB_1.png")
+    sample = preprocess_image(
+        "test_images/APB_1.png"
+    )
 
     print(sample.shape)
-    

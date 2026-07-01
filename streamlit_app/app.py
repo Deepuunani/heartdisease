@@ -6,9 +6,6 @@ import datetime
 import tempfile
 import os
 import sys
-from pdf_report import generate_pdf
-
-from PIL import Image
 
 PROJECT_ROOT = os.path.dirname(
     os.path.dirname(
@@ -18,10 +15,13 @@ PROJECT_ROOT = os.path.dirname(
 
 sys.path.append(PROJECT_ROOT)
 
+from preprocessing.ecg_report_crop import crop_ecg_report
+from preprocessing.extract_lead2 import extract_lead2
 from preprocessing.image_to_signal import preprocess_image
 from utils.ecg_info import DISEASE_INFO
+from pdf_report import generate_pdf
 
-# --------------------------------------------------
+from PIL import Image
 
 st.set_page_config(
     page_title="AI ECG Arrhythmia Detection",
@@ -29,13 +29,13 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("❤️ AI-Based ECG Arrhythmia Detection System")
+st.title(
+    "❤️ AI-Based ECG Arrhythmia Detection System"
+)
 
 st.subheader(
     "Early Heart Abnormality Screening"
 )
-
-# --------------------------------------------------
 
 @st.cache_resource
 def load_model():
@@ -45,8 +45,6 @@ def load_model():
     )
 
 model = load_model()
-
-# --------------------------------------------------
 
 labels = {
 
@@ -65,8 +63,6 @@ labels = {
     6: "Paced Beat"
 
 }
-
-# --------------------------------------------------
 
 st.header("Patient Information")
 
@@ -91,58 +87,94 @@ gender = st.selectbox(
 )
 
 uploaded_file = st.file_uploader(
-    "Upload ECG Image",
-    type=["png", "jpg", "jpeg"]
+    "Upload ECG Report",
+    type=[
+        "png",
+        "jpg",
+        "jpeg"
+    ]
 )
-# --------------------------------------------------
-# IMAGE PREVIEW AND PREDICTION
-# --------------------------------------------------
 
 if uploaded_file is not None:
 
-    image = Image.open(uploaded_file)
+    image = Image.open(
+        uploaded_file
+    )
 
     st.image(
-    image,
-    caption="Uploaded ECG Image"
-)
+        image,
+        caption="Uploaded ECG Report"
+    )
 
     if st.button("Predict"):
 
-        # Save uploaded image temporarily
         with tempfile.NamedTemporaryFile(
             delete=False,
             suffix=".png"
         ) as tmp:
 
-            tmp.write(uploaded_file.getbuffer())
+            tmp.write(
+                uploaded_file.getbuffer()
+            )
 
             image_path = tmp.name
 
-        # Convert uploaded image to ECG signal
-        sample = preprocess_image(image_path)
+        cropped_path = crop_ecg_report(
+            image_path
+        )
 
-        # Model Prediction
-        prediction = model.predict(sample, verbose=0)
+        st.subheader(
+            "Detected ECG Region"
+        )
 
-        predicted = np.argmax(prediction)
+        st.image(
+            Image.open(cropped_path),
+            caption="Cropped ECG Region"
+        )
+
+        lead2_path = extract_lead2(
+            cropped_path
+        )
+
+        st.subheader(
+            "Detected Lead II Rhythm Strip"
+        )
+
+        st.image(
+            Image.open(lead2_path),
+            caption="Lead II Rhythm Strip"
+        )
+
+        sample = preprocess_image(
+            lead2_path
+        )
+
+        prediction = model.predict(
+            sample,
+            verbose=0
+        )
+
+        predicted = np.argmax(
+            prediction
+        )
 
         confidence = float(
             np.max(prediction) * 100
         )
 
         disease = labels[predicted]
+
         if disease == "Normal Beat":
+
             status = "NORMAL"
+
         else:
+
             status = "ABNORMAL"
 
-        st.success("Prediction Completed")
-
-        # --------------------------------------------------
-        # PREDICTION RESULT
-        # --------------------------------------------------
-
+        st.success(
+            "Prediction Completed"
+        )
         st.markdown("---")
 
         st.header("Prediction Result")
@@ -150,28 +182,32 @@ if uploaded_file is not None:
         st.subheader("ECG Status")
 
         if status == "NORMAL":
+
             st.success("🟢 NORMAL")
 
         else:
-            st.error("🔴 ABNORMAL")
 
+            st.error("🔴 ABNORMAL")
         st.subheader("Diagnosis")
 
-        st.info(disease)
+        if status == "NORMAL":
+             st.success("No significant ECG abnormality detected.")
+        else:
+            st.error("Possible ECG abnormality detected. Further medical evaluation is recommended.")
 
         st.subheader("Confidence Score")
 
-        st.progress(int(confidence))
+        st.progress(
+            int(confidence)
+        )
 
         st.write(
             f"**{confidence:.2f}%**"
         )
 
-        # --------------------------------------------------
-        # DISEASE INFORMATION
-        # --------------------------------------------------
-
-        info = DISEASE_INFO[disease]
+        info = DISEASE_INFO[
+            disease
+        ]
 
         col1, col2 = st.columns(2)
 
@@ -188,106 +224,95 @@ if uploaded_file is not None:
                 "Model Accuracy",
                 "98.73%"
             )
+        st.subheader("Risk Suggestions")
 
-        st.subheader("Description")
+        if status == "NORMAL":
+            st.success("""
+• Continue maintaining a healthy lifestyle.
+• Exercise regularly.
+• Follow a balanced diet.
+• Get adequate sleep.
+• Attend routine health check-ups.
+""")
 
-        st.info(
-            info["Description"]
-        )
-        # --------------------------------------------------
-        # POSSIBLE SYMPTOMS
-        # --------------------------------------------------
-
+        else:
+            st.warning("""
+• Avoid strenuous physical activity until evaluated.
+• Monitor symptoms regularly.
+• Maintain a heart-healthy lifestyle.
+• Avoid smoking and excessive alcohol.
+• Seek medical advice if symptoms worsen.
+""")
         st.subheader("Possible Symptoms")
 
-        if disease == "Normal Beat":
+        if status == "NORMAL":
+            st.success("""
+• No abnormal symptoms detected.
+• Heart rhythm appears stable.
+""")
 
-            st.success("No abnormal symptoms detected.")
-
-        elif disease == "Premature Ventricular Contraction":
-
+        else:
             st.write("""
-• Palpitations
 • Chest discomfort
+• Palpitations
 • Dizziness
 • Fatigue
-""")
-
-        elif disease == "Atrial Premature Beat":
-
-            st.write("""
-• Fast heartbeat
-• Irregular heartbeat
-• Mild dizziness
-""")
-
-        elif disease == "Left Bundle Branch Block":
-
-            st.write("""
-• Chest pain
 • Shortness of breath
-• Fatigue
 """)
 
-        elif disease == "Right Bundle Branch Block":
-
-            st.write("""
-• Usually no symptoms
-• Mild dizziness
-""")
-
-        elif disease == "Fusion Beat":
-
-            st.write("""
-• Irregular heartbeat
-• Weakness
-• Fatigue
-""")
-
-        elif disease == "Paced Beat":
-
-            st.write("""
-• Pacemaker generated heartbeat
-• Regular follow-up required
-""")
-
-        # --------------------------------------------------
-        # CLINICAL RECOMMENDATION
-        # --------------------------------------------------
-
+        
         st.subheader("Clinical Recommendation")
 
-        st.warning(
-            info["Recommendation"]
-        )
+        if status == "NORMAL":
+            st.success("""
+Continue maintaining a healthy lifestyle.
+
+• Exercise regularly.
+• Eat a balanced diet.
+• Get adequate sleep.
+• Attend routine health check-ups.
+""")
+
+        else:
+            st.warning("""
+Consult a cardiologist for further evaluation.
+
+Recommended next steps:
+• Repeat ECG if advised.
+• Additional tests such as Echocardiogram or Holter Monitoring may be required.
+• Seek immediate medical attention if you experience chest pain, severe shortness of breath, fainting, or persistent palpitations.
+
+Note: This AI prediction is intended for screening purposes only and should not replace a professional medical diagnosis.
+""") 
+
         pdf_file = "ECG_Report.pdf"
 
         logo_path = "assets/mits_logo.png"
 
         generate_pdf(
-    pdf_name=pdf_file,
-    logo_path=logo_path,
-    ecg_image_path=image_path,
-    patient_name=name,
-    age=age,
-    gender=gender,
-    status=status,
-    disease=disease,
-    confidence=confidence,
-    info=info
-)
-        with open(pdf_file, "rb") as pdf:
+            pdf_name=pdf_file,
+            logo_path=logo_path,
+            ecg_image_path=lead2_path,
+            patient_name=name,
+            age=age,
+            gender=gender,
+            status=status,
+            disease=disease,
+            confidence=confidence,
+            info=info
+        )
+
+        with open(
+            pdf_file,
+            "rb"
+        ) as pdf:
+
             st.download_button(
-        label="📄 Download ECG Report",
-        data=pdf,
-        file_name="ECG_Report.pdf",
-        mime="application/pdf"
-    )
-
-
-        # --------------------------------------------------
-        # SAVE PREDICTION TO DATABASE
-        # --------------------------------------------------
+                label="📄 Download ECG Report",
+                data=pdf,
+                file_name="ECG_Report.pdf",
+                mime="application/pdf"
+            )
 
         connection = sqlite3.connect(
             "database/ecg_database.db"
@@ -295,18 +320,20 @@ if uploaded_file is not None:
 
         cursor = connection.cursor()
 
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS patients
-        (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            patient_name TEXT,
-            age INTEGER,
-            gender TEXT,
-            prediction TEXT,
-            confidence REAL,
-            date_time TEXT
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS patients
+            (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                patient_name TEXT,
+                age INTEGER,
+                gender TEXT,
+                prediction TEXT,
+                confidence REAL,
+                date_time TEXT
+            )
+            """
         )
-        """)
 
         cursor.execute(
             """
@@ -337,20 +364,16 @@ if uploaded_file is not None:
         )
 
         connection.commit()
-
         connection.close()
 
-        # --------------------------------------------------
-        # REMOVE TEMP IMAGE
-        # --------------------------------------------------
-
         if os.path.exists(image_path):
-
             os.remove(image_path)
 
-        # --------------------------------------------------
-        # FINAL OUTPUT
-        # --------------------------------------------------
+        if os.path.exists(cropped_path):
+            os.remove(cropped_path)
+
+        if os.path.exists(lead2_path):
+            os.remove(lead2_path)
 
         st.success(
             "Prediction Saved Successfully"
@@ -363,4 +386,3 @@ if uploaded_file is not None:
         )
 
         st.balloons()
-        
