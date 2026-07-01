@@ -6,6 +6,7 @@ import datetime
 import tempfile
 import os
 import sys
+from pdf_report import generate_pdf
 
 from PIL import Image
 
@@ -259,6 +260,30 @@ if uploaded_file is not None:
         st.warning(
             info["Recommendation"]
         )
+        pdf_file = "ECG_Report.pdf"
+
+        logo_path = "assets/mits_logo.png"
+
+        generate_pdf(
+    pdf_name=pdf_file,
+    logo_path=logo_path,
+    ecg_image_path=image_path,
+    patient_name=name,
+    age=age,
+    gender=gender,
+    status=status,
+    disease=disease,
+    confidence=confidence,
+    info=info
+)
+        with open(pdf_file, "rb") as pdf:
+            st.download_button(
+        label="📄 Download ECG Report",
+        data=pdf,
+        file_name="ECG_Report.pdf",
+        mime="application/pdf"
+    )
+
 
         # --------------------------------------------------
         # SAVE PREDICTION TO DATABASE
